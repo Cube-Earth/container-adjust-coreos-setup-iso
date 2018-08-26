@@ -1,6 +1,7 @@
 #!/bin/bash
 #mknod /dev/loop0 b 7 0
 mkdir /mnt/iso1
+[[ -f /iso/coreos-setup-template.iso ]] || wget -P /iso https://github.com/Cube-Earth/container-tools-coreos-setup-iso/releases/download/1.0/coreos-setup-template.iso
 mount -o loop /iso/coreos-setup-template.iso /mnt/iso1
 cp -R /mnt/iso1 /tmp_iso
 mkdir /tmp_iso/profiles
