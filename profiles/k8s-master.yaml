@@ -1,0 +1,245 @@
+passwd:
+  users:
+  - name: core
+      # openssl passwd -1
+    password_hash: "$1$kRNIEg7.$WMmX8IDE0XGgqi8hzCxWJ1"
+    ssh_authorized_keys:
+    - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDJSbOpP3+8rtyoyaXjo+DQkSFpF4T7Q23zpTeCENVymPW7slPUTSOIvy2mmDJa0fwvI+SeDpnxL87/iiyZnLZLKRliVnCUs8iISp9aDrYigcyZc4AGA1c3BWm5DooH7oABvwtsrEPv5zpBTWwIybDA86PmV0hoMxgGsVMUdcxLkoVEkZqanjrcB1ntR2ILLH3U/s1+M6NdUWqyF0ga0WGLlcs/wMi4BgNqcGLOx+hGjtUu45Bq3Tr0waM1n4MCsf4HPntsgzBiFDfWzNmcR0gV4vIVb0graWoCoh695jjrRwJXsBNMU0Kjj6b8h+Y/vU19walDMnmDInpRgRSbBBxZzKvyTCKUvwq2LWKhfaGHa9lskJgD9umZTS7TuppRlSlxtcKX47XnVQ+BEC2mD9LGNEhljJbOTsThemL89bTcNxCS6EMtF7UqaZLvHUXW0g2jxIEh9ovOSce/syEFw7lEmVD8NpJmR/jkAAbSYb6uZdj/xX85Uifh0JlqNiU+DgKhjpKN8M+C4gHDEqiS7km2SFDrmhz58VLkmwJXGT9RNyq8b7D48YUmvZDpMxiO3O1Ewg4HjetuvhYlHmgcpE5WvDn9WKC8onEjPosaNT5yQiOeuX0Nh0PlgcdLLb/KtBK3Hzx9BRmrCDMK00/tJkFVQm2IrZ/aEW+Te1xVeNDxnQ== joerg@matrix"
+
+locksmith:
+  reboot_strategy: "off"
+  
+storage:
+  files:
+  - path: /etc/hostname
+    filesystem: root
+    contents:
+      inline: "k8s-master"
+    mode: 0420
+
+  - path: /home/core/.bashrc
+    filesystem: root
+    contents:
+      inline: |
+        . /usr/share/skel/.bashrc
+        alias ll="ls -l"
+    mode: 0644
+    user:
+      id: 500
+    group:
+      id: 501
+      
+  - path: /opt/bin/create-network-environment.sh
+    filesystem: root
+    contents:
+      inline: |
+        #!/bin/sh
+        until ping -c1 www.github.com; do sleep 2; done
+        ifconfig | awk 'BEGIN{n=0} match($0, /^([a-zA-Z0-9]+):/, a) { i=a[1]; e=match($0, /RUNNING/); n=n+1 } match($0, /^ +inet ([0-9.]+)/, a) { ip=a[1]; if(n==1) { print "DEFAULT_IPV4=" ip }; print toupper(i) "_IPV4=" ip }' > /etc/network-environment
+    mode: 0700
+    user:
+      id: 500
+    group:
+      id: 501
+
+#  - path: /etc/etcd2-environment
+#    filesystem: root
+#    contents:
+#      inline: |
+#        ETCD_DISCOVERY="https://discovery.etcd.io/3167a28541980f517493c3eb8f2ec999"
+#        ETCD_ADVERTISE_CLIENT_URLS="http://0.0.0.0:2379"
+#        ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${DEFAULT_IPV4}:2380"
+#        ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
+#        ETCD_LISTEN_PEER_URLS="http://${DEFAULT_IPV4}:2380"
+#    mode: 0700
+#    user:
+#      id: 500
+#    group:
+#      id: 501
+
+  - path: /opt/bin/install_docker-compose.sh
+    filesystem: root
+    contents:
+      inline: |
+        #!/bin/sh
+        until ping -c1 api.github.com; do sleep 2; done
+        curl -L `curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.assets[].browser_download_url | select(contains("Linux") and contains("x86_64"))'` > /opt/bin/docker-compose
+        chmod +x /opt/bin/docker-compose
+    mode: 0700
+    user:
+      id: 500
+    group:
+      id: 501
+     
+  - path: /etc/systemd/network/20-dhcp.network
+    filesystem: root
+    contents:
+      inline: |
+        [Match]
+        Name=en*
+
+        [Network]
+        DHCP=yes
+
+        [DHCP]
+        UseMTU=true
+        UseDomains=true
+        ClientIdentifier=mac   
+    mode: 0644
+    user:
+      id: 500
+    group:
+      id: 501
+
+ 
+systemd:
+  units:
+    
+# for development purposes
+  - name: update-engine.service
+    mask: true
+  - name: locksmithd.service
+    mask: true
+    
+  - name: echo1.service
+    enable: true
+    contents: |
+      [Unit]
+      Requires=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=true
+      ExecStart=/usr/bin/echo Hello World 1!
+            
+      [Install]
+      WantedBy=multi-user.target
+      
+  - name: echo2.service
+    enable: true
+    contents: |
+      [Unit]
+      ConditionFirstBoot=yes      
+      Requires=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=true
+      ExecStart=/usr/bin/echo Hello World 2!
+            
+      [Install]
+      WantedBy=multi-user.target
+      
+  - name: network-environment-creation.service
+    enable: true
+    contents: |
+      [Unit]
+      Description=Creates an network environment file
+      Documentation=https://github.com/Cube-Earth/container-tools-coreos-setup-iso
+      Requires=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=true
+      ExecStart=/opt/bin/create-network-environment.sh
+            
+      [Install]
+      WantedBy=multi-user.target
+              
+#  - name: etcd2-env-creation.service
+#    enable: true
+#    contents: |
+#      [Unit]
+#      Description=Creates an etcd2 environment file
+#      Documentation=https://github.com/Cube-Earth/container-tools-coreos-setup-iso
+#      Requires=network-online.target
+#      After=network-online.target
+#
+#      [Service]
+#      Type=oneshot
+#      RemainAfterExit=true
+#      ExecStartPre=/bin/sh -c "until ping -c1 raw.githubusercontent.com; do echo -n .; sleep 2; done"
+#      ExecStartPre=/usr/bin/mkdir -p /opt/bin
+#      ExecStartPre=/usr/bin/curl -o /opt/bin/create_etcd2_env.sh https://raw.githubusercontent.com/Cube-Earth/container-tools-coreos-setup-iso/master/download/create_etcd2_env.sh
+#      ExecStartPre=/usr/bin/chmod +x /opt/bin/create_etcd2_env.sh
+#      ExecStart=/opt/bin/create_etcd2_env.sh 3167a28541980f517493c3eb8f2ec999
+
+  - name: install_docker-compose.service
+    enable: true
+    contents: |
+        [Unit]
+        ConditionFirstBoot=yes
+        Description=Installs docker-compose
+        Requires=network-online.target
+        After=network-online.target
+    
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/opt/bin/install_docker-compose.sh
+            
+        [Install]
+        WantedBy=multi-user.target
+
+#  - name: etcd2.service
+#    enable: true
+#    dropins:
+#    - name: "10-apply_env.conf"
+#      contents: |
+#        [Unit]
+#        Requires=etcd2-env-creation.service
+#        After=etcd2-env-creation.service
+#
+#        [Service]
+#        EnvironmentFile=/etc/etcd2.env
+
+  - name: etcd2.service
+    enable: true
+    dropins:
+    - name: 10-start.conf
+      contents: |
+        [Unit]
+        Requires=network-environment-creation.service
+        After=network-environment-creation.service
+
+        [Service]
+        EnvironmentFile=/etc/network-environment
+        ExecStart=
+        ExecStart=/usr/bin/etcd2 \
+          --listen-peer-urls="http://0.0.0.0:2380" \
+          --listen-client-urls="http://0.0.0.0:2379,http://0.0.0.0:4001" \
+          --initial-advertise-peer-urls="http://${DEFAULT_IPV4}:2380" \
+          --advertise-client-urls="http://${DEFAULT_IPV4}:2379,http://${DEFAULT_IPV4}:4001" \
+          --discovery="https://discovery.etcd.io/3b985984fdcc5afff6eb56b2aac14d57" \
+          --initial-cluster="%m=http://${DEFAULT_IPV4}:2380" \
+          --initial-cluster-token etcd-cluster-1 \
+          --initial-cluster-state new
+#          --discovery="https://discovery.etcd.io/ee7bc558c5fd9401ec000a8ee7c4f638"
+#          --discovery="https://discovery.etcd.io/3167a28541980f517493c3eb8f2ec999"
+    
+  - name: flanneld.service
+    enable: true
+    dropins:
+    - name: 50-network-config.conf
+      contents: |
+        [Service]
+        ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
+
+  - name: docker.service
+    enable: true
+    dropins:
+#    - name: 50-ssl.conf
+#      contents: |
+#      [Service]
+#      Environment=ETCD_SSL_DIR=/etc/ssl
+    - name: 60-docker-wait-for-flannel-config.conf
+      contents: |
+          [Unit]
+          After=flanneld.service
+          Requires=flanneld.service
+
+          [Service]
+          Restart=always
