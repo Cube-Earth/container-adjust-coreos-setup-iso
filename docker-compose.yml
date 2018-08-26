@@ -1,16 +1,10 @@
 version: '3'
 services:
   main:
-    build:
-        context: .
-        args:
-            - http_proxy
-            - https_proxy
-            - no_proxy
     image: cubeearth/adjust-coreos-setup-iso
     privileged: true
-    cap_add:
-    - CAP_MKNOD
+#    cap_add:
+#    - MKNOD
     volumes:
     - ${PROFILES_DIR}:/profiles:ro
     - ${OUTPUT_ISO_DIR}:/iso:rw
